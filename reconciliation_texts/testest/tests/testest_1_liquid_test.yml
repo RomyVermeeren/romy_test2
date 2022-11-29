@@ -1,0 +1,13 @@
+test_name:
+  context:
+    period: "2019-12-31"
+  data:
+    periods:
+      2019-12-31:
+        reconciliations:
+          testest:
+            custom: {}
+      2018-12-31: null
+  expectation:
+    reconciled: true
+    results: {}

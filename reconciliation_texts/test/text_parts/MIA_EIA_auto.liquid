@@ -1,0 +1,48 @@
+{% comment %}please use this part to include new tariffs for MIA and EIA when released{% endcomment %}
+
+{% capture auto_mia_deduction_entry_key %}mia_ded_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+
+{% if custom.auto_kia_entries.[entry_mia_option] == true  %}
+  {% assign [auto_mia_deduction_entry_key] = 0 %}
+  {% if [auto_mia_amt_entry_key] >= mia_min %}
+    
+    {% unless [auto_inv_date] < year_start_date %}
+      {% if custom.auto_kia_entries.[entry_mia_category] == "A" %}
+        {% assign [auto_mia_deduction_entry_key] = cat_A*[auto_mia_amt_entry_key] %}
+      {% elsif custom.auto_kia_entries.[entry_mia_category] == "B" %}
+        {% assign [auto_mia_deduction_entry_key] = cat_B*[auto_mia_amt_entry_key] %}
+      {% elsif custom.auto_kia_entries.[entry_mia_category] == "C" %}
+        {% assign [auto_mia_deduction_entry_key] = cat_C*[auto_mia_amt_entry_key] %}
+      {% elsif custom.auto_kia_entries.[entry_mia_category] == "D" %}
+        {% assign [auto_mia_deduction_entry_key] = cat_D*[auto_mia_amt_entry_key] %}
+      {% elsif custom.auto_kia_entries.[entry_mia_category] == "E" %}
+        {% assign [auto_mia_deduction_entry_key] = cat_E*[auto_mia_amt_entry_key] %}
+      {% elsif custom.auto_kia_entries.[entry_mia_category] == "F" %}
+        {% assign [auto_mia_deduction_entry_key] = cat_F*[auto_mia_amt_entry_key] %}
+      {% elsif custom.auto_kia_entries.[entry_mia_category] == "G" %}
+       {% assign [auto_mia_deduction_entry_key] = cat_G*[auto_mia_amt_entry_key] %}
+      {% endif %}
+    {% endunless %}
+    
+    {% $3+ [auto_mia_deduction_entry_key] %}
+    
+  {% endif %}
+{% endif %}
+
+{% comment %}EIA logic{% endcomment %}
+
+{% capture auto_eia_deduction_entry_key %}eia_ded_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+
+{% if custom.auto_kia_entries.[entry_eia_option] == true %}
+  {% assign [auto_eia_deduction_entry_key] = 0 %}
+  {% if [auto_eia_amt_entry_key] >= eia_min %}
+    {% unless [auto_inv_date] < year_start_date %}
+      {% assign [auto_eia_deduction_entry_key] = [auto_eia_amt_entry_key]*eia_deduct %}
+    {% endunless %}
+    {% $4+ [auto_eia_deduction_entry_key] %}
+  {% endif %}
+{% endif %}
+
+
+
+

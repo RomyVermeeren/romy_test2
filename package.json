@@ -1,0 +1,14 @@
+{
+  "name": "romy_test2",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "git@github.com:RomyVermeeren/romy_test2.git",
+  "author": "Romy <romy.vermeeren@silverfin.com>",
+  "license": "MIT",
+  "dependencies": {
+    "sf_toolkit": "https://github.com/silverfin/sf-toolkit.git#firm-parameter"
+  },
+  "scripts": {
+    "silverfin": "node ./node_modules/sf_toolkit/bin/cli.js"
+  }
+}

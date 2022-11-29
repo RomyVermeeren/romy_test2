@@ -1,0 +1,32 @@
+{% comment %}
+EXAMPLE: fori that is not executed at all, you will see all these fields in the "upload data"
+{% endcomment %}
+
+{% capture fori_for_upload %}
+  {% fori test in custom.test_collection %}
+  {% input test.explanation_1 as:text import_title:"Explanation 1" %}
+  {% input test.explanation_2 as:text import_title:"Explanation 2" %}
+  {% input test.explanation_3 as:text import_title:"Explanation 3" %}
+  {% endfori %}
+{% endcapture %}
+
+{% comment %}
+Only printing one custom from the previously defined fori
+{% endcomment %}
+ {% for item in custom.test_collection %}
+  {% input item.explanation_1 %}
+ {% endfor %}
+ 
+{% comment %}
+SECOND EXAMPLE:
+Have a fori where some items are not visible on the front-end, but you can upload data into
+{% endcomment %}
+
+{% fori test in custom.test_collection_2 %}
+  {% input test.you_see_me_1 as:text import_title:"Visible text 1" %}
+  {% input test.you_see_me_2 as:text import_title:"Visible text 2" %}
+  {% capture hidden_inputs %}
+    {% input test.you_dont_see_me_1 as:text import_title:"Invisbile text 1" %}
+    {% input test.you_dont_see_me_2 as:text import_title:"Invisbile text 2" %}
+  {% endcapture %}
+{% endfori %}

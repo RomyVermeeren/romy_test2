@@ -1,0 +1,1032 @@
+update for test
+
+{% include "parts/translations" %}
+
+<p></p>
+
+{% comment %}get account range{% endcomment %}
+{% assign accounts = period.accounts.include_zeros | range:'BMva' %}
+{% for account in accounts %}
+  {% if account.results.type == "investerings_afschrijvingstabel" %}
+    {% assign investerings_afschrijvingstabel_range = investerings_afschrijvingstabel_range | append:account.number | append:"," %}
+  {% endif %}
+{% endfor %}
+
+{% assign accounts = period.accounts.include_zeros | range:investerings_afschrijvingstabel_range %}
+
+{% comment %}only get depreciation table data when depreciation table exists, in order to avoid error{% endcomment %}
+{% if period.reconciliations.afschrijvingsstaat.exists? %}
+{% comment %}obtain auto-filled accounts (2) - iterate over relevant account range{% endcomment %}
+{% for account in accounts %}
+
+  {% comment %}first capture statement to identify row from Afschrijvingsstaat{% endcomment %}
+  {% capture kia_account_no %}kia_{{ account.id }}{% endcapture %}
+  {% assign account_details = account.details | sort:'date' %}
+  {% for detail in account_details %}
+
+    {% comment %}second capture statement to identify row from Afschrijvingsstaat{% endcomment %}
+    {% capture detailkey %}{{ detail.key }}{% endcapture %}
+    
+    {% comment %}get locals for deduction booleans{% endcomment %}
+    {% capture entry_kia_option %}kia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_mia_option %}mia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_eia_option %}eia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    
+    {% comment %}check if boolean was marked as true in the Afschrijvingsstaat{% endcomment %}
+    {% assign check_entry = period.reconciliations.afschrijvingsstaat.custom.[kia_account_no].[detailkey] %}
+    
+    {% if check_entry == true and detail.date <= period.year_end_date and detail.date >= period.year_start_date %}
+      {% comment %}create temporary variables{% endcomment %}
+      {% capture auto_description %}desc_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+      {% assign [auto_description] = detail.custom.title %}
+      {% capture auto_inv_amount %}value_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+      {% assign [auto_inv_amount] = detail.value %}
+      {% capture auto_inv_date %}date_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+      {% assign [auto_inv_date] = detail.date | as:date %}
+      {% unless custom.auto_kia_entries.[entry_kia_option] == false or custom.auto_kia_entries.[entry_mia_option] == false or custom.auto_kia_entries.[entry_eia_option] == false %}
+        {% $1+ [auto_inv_amount] %}
+      {% endunless %}
+    {% endif %}
+    
+    {% comment %}reset check_entry{% endcomment %}
+    {% assign check_entry = false %}
+    
+    {% comment %}create array of mia_option id's{% endcomment %}
+    {% capture entry_mia_option %}mia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% assign mia_account_array = mia_account_array | append:entry_mia_option | append:"|" %}
+    
+  {% endfor %}  
+{% endfor %}
+
+{% assign mia_account_array = mia_account_array | split:"|" %}
+{% endif %}
+
+{% comment %}table parameters{% endcomment %}
+{% assign text_width = 16 %}
+{% assign kia_perc_width = 4 %}
+{% assign total_column_width = 6 %}
+{% assign export_col_width = (68-text_width-kia_perc_width-total_column_width)/5 %}
+
+{% comment %}tabledef code{% endcomment %}
+{% capture d_table_header %}{% ic %}|---{{ INT(text_width) }}%---+|--8%--|--8%--|:--4%--:|--4%--|--4%--|----:+|----:+|----:+|----:+|---{{ INT(total_column_width) }}%--:|--{{ INT(total_column_width) }}%-:|--{{ INT(total_column_width) }}%-:|--{{ INT(kia_perc_width) }}%--:|--{{ INT(total_column_width) }}%-:|--{{ INT(total_column_width) }}%--:+{% endic %}{% nic %}|---{{ INT(text_width) }}%---+|--8%--|--8%--|:--4%--:|--4%--|--4%--|--{{ INT(export_col_width) }}%--:|---{{ INT(export_col_width) }}%--:|--{{ INT(export_col_width) }}%-:|--{{ INT(export_col_width) }}%-:|--{{ INT(export_col_width) }}%--:|--{{ INT(total_column_width) }}%-:|--{{ INT(kia_perc_width) }}%--:+{% endnic %}{% endcapture %}
+
+{% comment %}determine current year{% endcomment %}
+{% assign current_year = period.year_end_date | date:"%Y" %}
+
+{% comment %}include other parts{% endcomment %}
+{% include "parts/KIA tariffs" %}
+{% include "parts/EIA MIA tables" %}
+
+{% comment %}rollforward conditions{% endcomment %}
+{% assign fy_to = rollforward.period.year_end_date %}
+{% assign fy_from = period.year_end_date %}
+
+{% comment %}year_date assignment for automatic part only{% endcomment %}
+{% assign year_end_date = period.year_end_date as:date %}
+{% assign year_start_date = period.year_start_date as:date %}
+
+{% comment %}get total investment amount from fori loop lines{% endcomment %}
+{% for entry in custom.kia_entries %}
+  {% assign investment_year = entry.inv_date | date:"%Y" %}
+  {% assign no_option_selected = false %} 
+  {% unless entry.kia_option == true or entry.mia_option == true or entry.eia_option == true %}
+    {% assign no_option_selected = true %}
+  {% endunless %}
+  {% unless entry.inv_date != blank and entry.inv_date > year_end_date or entry.inv_date < year_start_date %}
+    {% unless no_option_selected == true %}
+      {% $1+ entry.inv_amount %}
+    {% endunless %}
+  {% endunless %}
+{% endfor %}
+{% assign total_cumulative = $1 %}
+
+{% comment %}for each year get kia deduction parameters{% endcomment %}
+{% for calendar_year in period.calendar_years %}
+  {% assign year = calendar_year.start_date | date:"%Y" %}
+  {% capture base_perc %}base_perc_{{ year }}{% endcapture %}
+  {% capture limit_1 %}limit_1_{{ year }}{% endcapture %}
+  {% capture limit_2 %}limit_2_{{ year }}{% endcapture %}
+  {% capture limit_3 %}limit_3_{{ year }}{% endcapture %}
+  {% capture limit_4 %}limit_4_{{ year }}{% endcapture %}
+  {% capture kia_deduction %}kia_deduction_{{ year }}{% endcapture %}
+  {% capture base_deduction %}base_deduction_{{ year }}{% endcapture %}
+  {% capture limit_3_perc %}limit_3_perc_{{ year }}{% endcapture %}
+  
+  {% comment %}for each year get total kia deduction amount based on parameters{% endcomment %}
+  {% if total_cumulative >= [limit_1] and total_cumulative < [limit_2] %} 
+    {% assign [kia_deduction] = [base_perc]*total_cumulative %}
+  {% elsif total_cumulative >= [limit_2] and total_cumulative < [limit_3] %}
+    {% assign [kia_deduction] = [base_deduction] %}
+  {% elsif total_cumulative >= [limit_3] and total_cumulative < [limit_4] %}
+    {% assign [kia_deduction] = [base_deduction]-([limit_3_perc]*(total_cumulative-[limit_3])) %}
+  {% elsif total_cumulative >= [limit_4] %}
+    {% assign [kia_deduction] = 0 %}
+    {% assign max_limit = true %}
+  {% else %}
+    {% assign [kia_deduction] = 0 %}
+  {% endif %}
+  
+  {% comment %}for each year determine effective percentage variable name + value{% endcomment %}
+  {% capture effective_perc %}effective_perc_{{ year }}{% endcapture %}
+  {% assign [effective_perc] = [kia_deduction]/total_cumulative %}
+  {% result year [effective_perc] %}
+{% endfor %}
+
+{% comment %}check whether alternative export formatting should be applied{% endcomment %}
+{% assign mia_check = false %}
+{% for entry in custom.kia_entries %}
+  {% if entry.mia_option == true %}{% assign mia_check = true %}{% endif %}
+{% endfor %}
+{% for item in mia_account_array %}
+  {% if custom.auto_kia_entries.[item] == true %}{% assign mia_check = true %}{% endif %}
+{% endfor %}
+
+{% if max_limit %}
+  {% ic %}
+  {::infotext}
+  {% t "max_investment_amount" %}
+  {:/infotext}
+  {% endic %}
+  <p></p>
+{% endif %}
+
+{% comment %}conditional ref to divestment recapture template{% endcomment %}
+{% if period.reconciliations.nl_divestment_recapture.exists? %}
+{% ic %}
+{% capture link_dib %}{% linkto period.reconciliations.nl_divestment_recapture %}{% t "deduction_recapture" %}{% endlinkto %}{% endcapture %}
+{::infotext}
+{% t "recapture_infotext" link_dib:link_dib %}
+{:/infotext}
+{% endic %}
+{% endif %}
+
+<p></p>
+
+{% comment %}-------MAIN FORILOOP TABLE--------{% endcomment %}
+
+{% comment %}headers{% endcomment %}
+{% stripnewlines %}
+{% newline %}
+{{ d_table_header }}
+{% newline %}
+|**{% t "Omschrijving" %}** 
+|**{% t "Datum investering" %}** 
+|**{% t "Datum ingebruikname" %}** 
+|**{% t "KIA" %}**
+|**{% t "MIA" %}**
+|**{% t "EIA" %}**
+{% ic %}|**{% t "Investering" %}**<br/>**{% t "voorgaande jaren" %}**{% endic %}
+|**{% t "Investering" %}**<br/>**{% t "huidig jaar" %}**
+{% ic %}
+  |**{% t "Betaald" %}**<br/>**{% t "voorgaande jaren" %}**
+  |**{% t "Betaald" %}**<br/>**{% t "huidig jaar" %}**
+{% endic %}
+{% if mia_check == true %}
+  |**{% t "MIA categorie" %}**
+{% else %}
+  {% ic %}|**{% t "MIA categorie" %}**{% endic %}
+{% endif %}
+|**{% t "KIA" %}**
+|**{% t "MIA" %}**
+|**{% t "EIA" %}**
+|**{% t "Totaal aftrek" %}**{% ic %}<br>{::infotext as="hover"}{% t "Betreft aftrek in huidig boekjaar" %}{:/infotext}{% endic %}
+|**{% t "KIA %" %}**
+{% newline %}
+
+|__|__|__|__|__|_{% ic %}_|_€{% endic %}_|_€{% ic %}_|_€_|_€{% endic %}{% if mia_check == true %}_|_{% else %}{% ic %}_|_{% endic %}{% endif %}_|_€_|_€_|_€_|_€_|__
+{% newline %}
+
+{% comment %}----- PART SOURCED AUTOMATICALLY FROM DEPRECIATION TABLE -----{% endcomment %}
+
+{% comment %}populate auto-filled rows{% endcomment %}
+{% for account in accounts %}
+  {% capture kia_account_no %}kia_{{ account.id }}{% endcapture %}
+  {% assign account_details = account.details | sort:'date' %}
+  {% for detail in account_details %}
+  
+    {% capture detailkey %}{{ detail.key }}{% endcapture %}
+    
+    {% comment %}call temporary variables - flow{% endcomment %}
+    {% capture auto_description %}desc_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture auto_inv_amount %}value_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture auto_inv_date %}date_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    
+    {% comment %}get correct date format{% endcomment %}
+    {% assign [auto_inv_date] = [auto_inv_date] as:date %}
+
+    {% comment %}create temporary variables - entry{% endcomment %}
+    {% capture entry_usedate %}usedate_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_kia_option %}kia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_kia_option_local %}kia_{{ kia_account_no }}_{{ detailkey }}_local{% endcapture %}
+    {% capture entry_mia_option %}mia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_eia_option %}eia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_retrosp_investment %}retro_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_paid_prior %}prior_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_paid %}paid_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_mia_category %}miacat_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_kia_percentage %}perc_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    
+    {% comment %}boolean for rollforwarding or not{% endcomment %}
+    {% capture rf_auto_entry %}rf_auto_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    
+    {% if [auto_description] != blank and [auto_inv_date] != blank %}
+      | {% linkto account %}{{ [auto_description] }}{% endlinkto %}
+      | {{ [auto_inv_date] | date:"%d/%m/%Y" }}
+        
+        {% comment %}default value for auto_usedate{% endcomment %}
+        {% assign auto_usedate = [auto_inv_date] as:date %}
+        
+        
+      {% if [auto_inv_date] > year_end_date %}
+
+        {% comment %}show white line for remaining columns if date is ineligible{% endcomment %}
+        |{% ic %}{::warningtext as="hover"}{% t "Investeringsdatum dient niet in een toekomstig boekjaar te liggen" %}{:/warningtext}{% endic %}
+        |||||
+        {% ic %}|{% endic %}
+        {% if mia_check == true %}|{% else %}{% ic %}|{% endic %}{% endif %}
+        {% ic %}||{% endic %}||||||
+          
+      {% else %}
+          
+          {% assign same_default_date = [auto_inv_date] | date:"%d/%m/%Y" %}
+        | {% input custom.auto_kia_entries.[entry_usedate] default:same_default_date as:date placeholder:"dd/mm/yyyy" %}
+          {% if custom.auto_kia_entries.[entry_usedate] != blank %}
+            {% assign auto_usedate = custom.auto_kia_entries.[entry_usedate] as:date %}
+          {% endif %}
+    
+          {% if auto_usedate < [auto_inv_date] %}
+            {% ic %}{::warningtext as="hover"}{% t "Investeringsdatum kan niet later zijn dan ingebruikname" %}{:/warningtext}{% endic %}
+          {% endif %}
+          {% if auto_usedate < year_start_date %}{% ic %}{::warningtext as="hover"}{% t "Investering is niet meer relevant voor huidig boekjaar" %}{:/warningtext}{% endic %}{% endif %}
+          
+          {% comment %}what happens with retrospectively entered investments for which no deduction was yet applied{% endcomment %}
+          {% if [auto_inv_date] < year_start_date and auto_usedate >= year_start_date %}
+            {% assign auto_default_percentage = period.minus_1y.reconciliations.nl_investments.results.[investment_year] %}
+          {% elsif [auto_inv_date] < year_start_date %}
+            {% ic %}{::infotext as='hover'}{% t "Geen KIA aftrek mogelijk, investering heeft betrekking op voorgaande periode" %}{:/infotext}{% endic %}
+          {% endif %}
+                
+        | {% input custom.auto_kia_entries.[entry_kia_option] as:boolean default:true assign:autokia_bool %}
+        
+          {% comment %}create separate local variable for rollforward purposes{% endcomment %}
+          {% assign [entry_kia_option_local] = autokia_bool %}
+          
+        | {% input custom.auto_kia_entries.[entry_mia_option] as:boolean assign:automia_bool %}
+        | {% input custom.auto_kia_entries.[entry_eia_option] as:boolean assign:autoeia_bool %}
+            
+        {% if custom.auto_kia_entries.[entry_mia_option] and custom.auto_kia_entries.[entry_eia_option] %}
+          {% ic %}{::warningtext as="hover"}{% t "Combinatie MIA en EIA is niet toegestaan" %}{:/warningtext}{% endic %}
+        {% endif %}
+        
+        {% comment %}set local variable to true in case deduction category is used at least once{% endcomment %}
+        {% if autokia_bool %}
+          {% assign kia_data_included = true %}
+        {% endif %}
+        {% if automia_bool %}
+          {% assign mia_data_included = true %}
+        {% endif %}
+        {% if autoeia_bool %}
+          {% assign eia_data_included = true %}
+        {% endif %}
+        
+        {% unless autokia_bool or automia_bool or autoeia_bool %}
+            {% ic %}{::warningtext as="hover"}{% t "Kies minstens één aftrekregeling" %}{:/warningtext}{% endic %}
+            {% ic %}|{% endic %}|{% ic %}||{% endic %}{% if mia_check == true %}|{% else %}{% ic %}|{% endic %}{% endif %}|||||
+            
+        {% else %}
+          
+          {% ic %}
+          | {% if [auto_inv_date] != blank and [auto_inv_date] < year_start_date %}
+              {%=$20+input custom.auto_kia_entries.[entry_retrosp_investment] as:currency_dc precision:0 placeholder:0 %}
+              {% if custom.auto_kia_entries.[entry_retrosp_investment] < 0 %}{% ic %}{::warningtext as="hover"}{% t "Vul een positief bedrag in" %}{:/warningtext}{% endic %}{% endif %}
+            {% endif %}
+          {% endic %}
+          | {% unless [auto_inv_date] != blank and [auto_inv_date] < year_start_date %}
+              {{ [auto_inv_amount] | currency_dc:0 }}
+            {% endunless %}
+          {% ic %}
+            {% comment %}get paid amounts from prior periods{% endcomment %}
+          | {% if custom.auto_kia_entries.[entry_retrosp_investment] > 0 and [auto_inv_date] < year_start_date %}
+              {%=$21+input custom.auto_kia_entries.[entry_paid_prior] as:currency_dc precision:0 placeholder:0 %}
+            {% endif %}
+            
+            {% comment %}paid amount, current periods{% endcomment %}
+          | {% if auto_usedate != blank and auto_usedate > [auto_inv_date] and auto_usedate > year_end_date %}
+              {%=$22+input custom.auto_kia_entries.[entry_paid] as:currency_dc precision:0 placeholder:0 %}
+              {% if custom.auto_kia_entries.[entry_paid] < 0 %}{% ic %}{::warningtext as="hover"}{% t "Vul een positief bedrag in" %}{:/warningtext}{% endic %}{% endif %}
+            {% endif %}
+          {% endic %}
+          
+          {% assign auto_currently_paid = custom.auto_kia_entries.[entry_paid] | default:0 %}
+            
+          {% comment %}create boolean for whether any deduction remains or not{% endcomment %}
+          {% if auto_currently_paid >= ([auto_inv_amount]+custom.auto_kia_entries.[entry_retrosp_investment]) or auto_usedate <= year_end_date %}
+            {% assign auto_settled_cy = true %}
+          {% else %}
+            {% assign auto_settled_cy = false %}
+          {% endif %}
+        
+          {% comment %}mia category to be shown in export only conditionally{% endcomment %}
+          {% if mia_check %}
+            |{% if automia_bool and [auto_inv_date] > year_start_date %}
+              {% input custom.auto_kia_entries.[entry_mia_category] as:select options:"A|B|C|D|E|F|G" %}
+            {% endif %}
+          {% else %}
+            {% ic %}|{% endic %}
+          {% endif %}
+          
+          {% comment %}invested amounts per arrangement type kia/mia/eia, but not printed{% endcomment %}
+          {% if autokia_bool == true %}
+            {% unless [auto_inv_amount] == 0 or [auto_inv_amount] == blank %}
+              {% $5+ [auto_inv_amount] %}
+            {% endunless %}
+          {% endif %}
+          {% capture auto_mia_amt_entry_key %}mia_amt_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+          {% if automia_bool == true %}
+            {% assign [auto_mia_amt_entry_key] = [auto_inv_amount] %}
+            {% $6+ [auto_inv_amount] %}
+          {% endif %}
+          {% capture auto_eia_amt_entry_key %}eia_amt_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+          {% if autoeia_bool == true %}
+            {% assign [auto_eia_amt_entry_key] = [auto_inv_amount] %}
+            {% $7+ [auto_inv_amount] %}
+          {% endif %}
+          
+        
+          {% comment %}----------KIA LOGIC SECTION------------{% endcomment %}
+      
+          | {% assign auto_investment_year = [auto_inv_date] | date:"%Y" %}
+          {% capture effective_perc %}effective_perc_{{ auto_investment_year }}{% endcapture %}
+    
+          {% comment %}get deduction for current year for current entry{% endcomment %}
+          {% if [auto_inv_date] < year_start_date and auto_usedate >= year_start_date %}
+            {% assign auto_kia_per_inv = custom.auto_kia_entries.[entry_kia_percentage]*[auto_inv_amount] %}
+          {% else %}
+            {% assign auto_kia_per_inv = [effective_perc]*[auto_inv_amount] %}
+          {% endif %}
+          
+          {% assign auto_remaining_deduction = (auto_kia_per_inv-custom.auto_kia_entries.[entry_paid_prior)] %}
+          
+          {% if auto_remaining_deduction < 0 %}
+            {% assign auto_remaining_deduction = 0 %}
+          {% endif %}
+        
+          {% if autokia_bool %}
+          
+            {% comment %}<<<<<<<<<<<<<< when current deduction will be saved for future period  >>>>>>>>>>>>>>>{% endcomment %}
+            {% if auto_usedate > year_end_date and auto_settled_cy == false and auto_kia_per_inv > auto_currently_paid %}
+
+              {% assign kia_per_inv_cy = auto_currently_paid %}
+      
+              {% if fy_to > fy_from %}
+                {% assign [rf_auto_entry] = true %}
+              {% endif %}
+              
+              {% if autokia_bool %}
+                {% if kia_per_inv_cy >= 0 %}{{ kia_per_inv_cy | currency_dc:0 }}{% endif %}
+                {% $2+ kia_per_inv_cy %}{% $10+ kia_per_inv_cy %}
+              {% endif %}
+              
+            {% comment %}<<<<<<<<<<<<<< when all deduction is used in current period  >>>>>>>>>>>>>>>>>>>{% endcomment %}
+            {% elsif auto_settled_cy == true or auto_currently_paid >= auto_kia_per_inv %}
+
+              {% assign kia_per_inv_cy = auto_kia_per_inv %}
+              
+              {% if fy_to > fy_from %}
+                {% assign [rf_auto_entry] = false %}
+              {% endif %}
+              
+              {% if autokia_bool %}
+                {% if kia_per_inv_cy >= 0 %}{{ kia_per_inv_cy | currency_dc:0 }}{% endif %}
+                {% $2+ kia_per_inv_cy %}{% $10+ kia_per_inv_cy %}
+              {% endif %}
+              
+            {% comment %}<<<<<<<<<<<<<<<<<  remaining scenarios >>>>>>>>>>>>>>>>{% endcomment %}
+            {% else %}
+
+              {% assign kia_per_inv_cy = 0 %}
+              {% $10+ kia_per_inv_cy %}
+              
+              {% if fy_to > fy_from %}
+                {% assign [rf_auto_entry] = false %}
+              {% endif %}
+              
+            {% comment %}closing of outer if statements for line kia amount{% endcomment %}
+            {% endif %}
+          
+          {% comment %}else statement for entry.kia_option == true statement{% endcomment %}
+          {% else %}
+          
+            {% if fy_to > fy_from %}
+              {% assign [rf_auto_entry] = false %}
+            {% endif %}
+          
+          {% comment %}closing of if entry.kia_option != blank statement{% endcomment %}
+          {% endif %}
+          
+          {% include "parts/MIA_EIA_auto" %}
+          | {% if [auto_mia_deduction_entry_key] >= 0 %}
+              {{ [auto_mia_deduction_entry_key] | currency_dc:0 }}
+            {% endif %}
+          | {% if [auto_eia_deduction_entry_key] >= 0 %}
+              {{ [auto_eia_deduction_entry_key] | currency_dc:0 }}
+            {% endif %}
+          
+          
+          {% comment %}total deduction{% endcomment %}
+          | {% if autokia_bool or automia_bool or autoeia_bool %}
+              {% assign total_deduction_for_row = $10+[auto_mia_deduction_entry_key]+[auto_eia_deduction_entry_key] %}
+              {{ total_deduction_for_row | currency_dc:0 }}
+            {% endif %}   
+              
+            {% comment %}effective percentage logic{% endcomment %}
+          | {% if [auto_inv_date] >= year_start_date and autokia_bool == true %}
+              {{ [effective_perc] | percentage }}
+              {% assign [entry_kia_percentage] = [effective_perc] %}
+            {% elsif auto_usedate >= year_start_date %}
+              {% input custom.auto_kia_entries.[entry_kia_percentage] as:percentage placeholder:"0.00%" default:auto_default_percentage required:true %}
+              {% assign [entry_kia_percentage] = custom.auto_kia_entries.[entry_kia_percentage] %}
+            {% endif %}
+          
+        {% comment %}closing of big unless/else statement (automatic part){% endcomment %}  
+        {% endunless %}
+      
+      {% comment %}closing of big if/else statement (automatic part){% endcomment %}
+      {% endif %}
+      {% newline %}
+      
+      {% comment %}close register 10{% endcomment %}
+      {% assign $10 = 0 %}
+      
+    {% endif %}
+  {% endfor %}  
+{% endfor %}
+
+{% comment %}----- MANUAL ENTRY AND ROLLFORWARD PART -----{% endcomment %}
+
+{% comment %}populate main table, also refer to parts 2 and 3 for MIA and EIA calculation{% endcomment %}
+{% fori entry in custom.kia_entries %}
+  
+{% comment %}assign investment year{% endcomment %}
+{% assign investment_year = entry.inv_date | date:"%Y" %}
+
+| {% if entry.inv_date < year_start_date and entry.paid_prior != blank and entry.rf_check == true %}
+    {{ entry.description }}
+  {% else %}
+    {% input entry.description placeholder:"Omschrijving" required:true %}
+  {% endif %} 
+| {% if entry.paid_prior != blank and entry.rf_check == true %}
+    {{ entry.inv_date | date:"%d/%m/%Y" }}
+  {% else %}
+    {% input entry.inv_date as:date placeholder:"dd/mm/yyyy" required:true %}
+  {% endif %}
+  {% assign usedate = entry.inv_date as:date %}
+  {% if entry.inv_date != blank and entry.inv_date < year_start_date %}
+    {% unless entry.retrosp_investment %}
+      {% ic %}{::infotext as="hover"}{% t "Investeringsdatum ligt niet in huidige boekjaar" %}{:/infotext}{% endic %}
+    {% endunless %}
+  {% endif %}
+  
+
+{% if entry.inv_date != blank and entry.inv_date > year_end_date %}
+
+  {% comment %}show white line for remaining columns if date is ineligible{% endcomment %}
+  |{% ic %}{::warningtext as="hover"}{% t "Investeringsdatum dient niet in een toekomstig boekjaar te liggen" %}{:/warningtext}{% endic %}
+  |||||
+  {% ic %}|{% endic %}
+  {% if mia_check == true %}|{% else %}{% ic %}|{% endic %}{% endif %}
+  {% ic %}||{% endic %}|
+  |||||
+
+{% else %}
+  | {% if entry.inv_date < year_start_date and entry.paid_prior != blank and entry.rf_check == true %}
+      {{ entry.usedate | date:"%d/%m/%Y" }}
+    {% else %}
+      {% input entry.usedate default:entry.inv_date as:date placeholder:"dd/mm/yyyy" %}
+    {% endif %}
+    {% if entry.usedate != blank %}
+      {% assign usedate = entry.usedate as:date %}
+    {% endif %}
+
+    {% if usedate < entry.inv_date %}
+      {% ic %}{::warningtext as="hover"}{% t "Investeringsdatum kan niet later zijn dan ingebruikname" %}{:/warningtext}{% endic %}
+    {% endif %}
+    
+    {% if usedate < year_start_date %}{% ic %}{::warningtext as="hover"}{% t "Investering is niet meer relevant voor huidig boekjaar" %}{:/warningtext}{% endic %}{% endif %}
+    
+    {% if entry.inv_date < year_start_date and entry.paid_prior != blank and entry.rf_check == true %}
+    | {% if entry.kia_option == true %}{::font size='m'}{% ic %}<font color='909092'>{% endic %}{% nic %}<font color='000000'>{% endnic %}√</font>{:/font}{% endif %}
+    | {% if entry.mia_option == true %}{::font size='m'}{% ic %}<font color='909092'>{% endic %}{% nic %}<font color='000000'>{% endnic %}√</font>{:/font}{% endif %}
+    | {% if entry.eia_option == true %}{::font size='m'}{% ic %}<font color='909092'>{% endic %}{% nic %}<font color='000000'>{% endnic %}√</font>{:/font}{% endif %}
+    {% else %}
+    | {% input entry.kia_option as:boolean %}
+    | {% input entry.mia_option as:boolean %}
+    | {% input entry.eia_option as:boolean %}
+    {% endif %}
+    
+    {% comment %}set local variable to true in case deduction category is used at least once{% endcomment %}
+    {% if entry.kia_option %}
+      {% assign kia_data_included = true %}
+    {% endif %}
+    {% if entry.mia_option %}
+      {% assign mia_data_included = true %}
+    {% endif %}
+    {% if entry.eia_option %}
+      {% assign eia_data_included = true %}
+    {% endif %}
+  
+    {% if entry.mia_option and entry.eia_option %}
+      {% ic %}{::warningtext as="hover"}{% t "Combinatie MIA en EIA is niet toegestaan" %}{:/warningtext}{% endic %}
+    {% endif %}
+  
+  {% comment %}show white line for remaining columns if no category is selected{% endcomment %}
+  {% unless entry.kia_option == true or entry.mia_option == true or entry.eia_option == true or forloop.last %}
+    {% ic %}{::warningtext as="hover"}{% t "Kies minstens één aftrekregeling" %}{:/warningtext}{% endic %}
+    {% ic %}|{% endic %}|{% ic %}||{% endic %}{% if mia_check == true %}|{% else %}{% ic %}|{% endic %}{% endif %}|||||
+    
+  {% else %}
+  
+    {% ic %}
+    | {% if entry.inv_date != blank and entry.inv_date < year_start_date %}
+        {%=$20+input entry.retrosp_investment as:currency_dc precision:0 placeholder:0 %}
+        {% if entry.retrosp_investment < 0 %}{% ic %}{::warningtext as="hover"}{% t "Vul een positief bedrag in" %}{:/warningtext}{% endic %}{% endif %}
+      {% endif %}
+    {% endic %}
+    | {% unless entry.inv_date != blank and entry.inv_date < year_start_date %}
+        {% input entry.inv_amount placeholder:0 as:currency_dc precision:0 %}
+        {% if entry.inv_amount < 0 %}{% ic %}{::warningtext as="hover"}{% t "Vul een positief bedrag in" %}{:/warningtext}{% endic %}{% endif %}
+      {% endunless %}
+    {% ic %}
+      {% comment %}get paid amounts from prior periods{% endcomment %}
+    | {% if entry.retrosp_investment > 0 and entry.inv_date < year_start_date %}
+        {%=$21+input entry.paid_prior as:currency_dc precision:0 placeholder:0 %}
+      {% endif %}
+      
+      {% comment %}paid amount, current periods{% endcomment %}
+    | {% if usedate != blank and usedate > entry.inv_date and usedate > year_end_date %}
+        {%=$22+input entry.paid as:currency_dc precision:0 placeholder:0 %}
+        {% if entry.paid < 0 %}{% ic %}{::warningtext as="hover"}{% t "Vul een positief bedrag in" %}{:/warningtext}{% endic %}{% endif %}
+      {% endif %}
+    {% endic %}
+      
+      {% assign currently_paid = entry.paid | default:0 %}
+      
+      {% comment %}create boolean for whether any deduction remains or not{% endcomment %}
+      {% if currently_paid >= (entry.inv_amount+entry.retrosp_investment) or usedate <= year_end_date %}
+        {% assign settled_cy = true %}
+      {% else %}
+        {% assign settled_cy = false %}
+      {% endif %}
+      
+      {% comment %}get prior period payments{% endcomment %}
+      {% assign paid_prior_periods = entry.paid_prior+currently_paid %}
+    
+    {% comment %}mia category to be shown in export only conditionally{% endcomment %}
+    {% if mia_check %}
+      |{% if entry.mia_option == true and entry.inv_date > year_start_date %}
+        {% input entry.mia_category as:select options:"A|B|C|D|E|F|G" %}
+      {% endif %}
+    {% else %}
+      {% ic %}|{% endic %}
+    {% endif %}
+    
+    {% comment %}invested amounts per arrangement type kia/mia/eia, but not printed{% endcomment %}
+    {% if entry.kia_option == true %}
+      {% unless entry.inv_amount == 0 or entry.inv_amount == blank %}
+        {% $5+ entry.inv_amount %}
+      {% endunless %}
+    {% endif %}
+    {% capture mia_amt_entry_key %}mia_amt_{{ entry.key }}{% endcapture %}
+    {% if entry.mia_option == true %}
+      {% assign [mia_amt_entry_key] = entry.inv_amount %}
+      {% $6+ entry.inv_amount %}
+    {% endif %}
+    {% capture eia_amt_entry_key %}eia_amt_{{ entry.key }}{% endcapture %}
+    {% if entry.eia_option == true %}
+      {% assign [eia_amt_entry_key] = entry.inv_amount %}
+      {% $7+ entry.inv_amount %}
+    {% endif %}
+    
+    {% comment %}determine tax deduction per arrangement type{% endcomment %}
+    
+    {% comment %}rollforward count{% endcomment %}
+    {% assign rows_rollforwarded = 1 %}
+    
+    {% comment %}get effective percentage for current year for current entry{% endcomment %}
+    {% capture effective_perc %}effective_perc_{{ investment_year }}{% endcapture %}
+    
+    {% comment %}base case for kia percentage{% endcomment %}
+    {% assign kia_percentage = [effective_perc] %}
+  
+    {% comment %}get deduction for current year for current entry{% endcomment %}
+    {% assign kia_per_inv = [effective_perc]*(entry.inv_amount) %}
+    {% assign remaining_deduction = (kia_per_inv-entry.paid_prior) %}
+    
+    {% if remaining_deduction < 0 %}
+      {% assign remaining_deduction = 0 %}
+    {% endif %}
+  
+    |{% if entry.kia_option == true %}
+      
+      {% comment %}----------what happens when old deduction remained----------{% endcomment %}
+      {% if entry.inv_date < year_start_date and entry.paid_prior != blank and entry.rf_check == true %}
+      
+        {% assign kia_percentage = entry.kia_percentage %}
+        {% assign kia_per_inv = kia_percentage*entry.retrosp_investment %}
+        {% assign remaining_deduction = (kia_per_inv-entry.paid_prior) %}
+        
+        {% if remaining_deduction < 0 %}
+          {% assign remaining_deduction = 0 %}
+        {% endif %}
+        
+        {% comment %}---situation in which deduction remains even after current year---{% endcomment %}
+        {% if usedate > year_end_date and settled_cy == false and remaining_deduction > currently_paid %}
+          
+          {% assign kia_per_inv_cy = currently_paid %}
+          
+          {% if fy_to > fy_from %}
+            {% rollforward nil entry.mia_option %}
+            {% rollforward nil entry.eia_option %}
+            {% rollforward paid_prior_periods entry.paid_prior %}
+            {% rollforward nil entry.paid %}
+            {% rollforward nil entry.inv_amount %}
+            {% rollforward nil entry.mia_category %}
+            {% rollforward kia_percentage entry.kia_percentage %}
+            {% rollforward true entry.rf_check %}
+            {% assign rows_rollforwarded = rows_rollforwarded+1 %}
+          {% endif %}
+          
+        {% comment %}---situation in which deduction is all depleted---{% endcomment %}
+        {% elsif settled_cy == true or currently_paid+entry.paid_prior >= kia_per_inv %}
+          
+          {% assign kia_per_inv_cy = remaining_deduction %}
+        
+          {% if fy_to > fy_from %}
+            {% rollforward nil entry.description %}
+            {% rollforward nil entry.inv_date %}
+            {% rollforward nil entry.usedate %}
+            {% rollforward nil entry.kia_option %}
+            {% rollforward nil entry.mia_option %}
+            {% rollforward nil entry.eia_option %}
+            {% rollforward nil entry.retrosp_investment %}
+            {% rollforward nil entry.inv_amount %}
+            {% rollforward nil entry.paid_prior %}
+            {% rollforward nil entry.paid %}
+            {% rollforward nil entry.mia_category %}
+            {% rollforward nil entry.kia_percentage %}
+            {% rollforward nil entry.rf_check %}
+          {% endif %}
+          
+        {% else %}
+        
+          {% assign kia_per_inv_cy = 0 %}
+          
+          {% if fy_to > fy_from %}
+            {% rollforward nil entry.description %}
+            {% rollforward nil entry.inv_date %}
+            {% rollforward nil entry.usedate %}
+            {% rollforward nil entry.kia_option %}
+            {% rollforward nil entry.mia_option %}
+            {% rollforward nil entry.eia_option %}
+            {% rollforward nil entry.retrosp_investment %}
+            {% rollforward nil entry.inv_amount %}
+            {% rollforward nil entry.paid_prior %}
+            {% rollforward nil entry.paid %}
+            {% rollforward nil entry.mia_category %}
+            {% rollforward nil entry.kia_percentage %}
+            {% rollforward nil entry.rf_check %}
+          {% endif %}  
+        
+        {% endif %}
+        
+        {% if entry.kia_option == true %}
+          {% if kia_per_inv_cy >= 0 %}{{ kia_per_inv_cy | currency_dc:0 }}{% endif %}
+          {% $2+ kia_per_inv_cy %}{% $10+ kia_per_inv_cy %}
+        {% endif %}
+      
+      {% comment %}----------manual addition option for pre-existing periods----------{% endcomment %}
+      {% elsif entry.inv_date < year_start_date and entry.rf_check != true %}
+      
+        {% capture entry_key %}{{ entry.key }}{% endcapture %}
+        
+        {% comment %}logic for obtaining and defaulting previous period percentages{% endcomment %}
+        {% if period.minus_1y.exists and entry.kia_percentage == blank %}
+          {% assign default_percentage = period.minus_1y.reconciliations.nl_investments.results.[investment_year] %}
+          {% assign kia_percentage = default_percentage %}
+        {% else %}
+          {% assign kia_percentage = entry.kia_percentage %}
+        {% endif %}
+          
+        {% assign kia_per_inv = kia_percentage*entry.retrosp_investment %}
+        {% assign remaining_deduction = (kia_per_inv-entry.paid_prior) %}
+        
+        {% if remaining_deduction < 0 %}
+          {% assign remaining_deduction = 0 %}
+        {% endif %}
+        
+        {% comment %}---situation in which deduction remains even after current year---{% endcomment %}
+        {% if usedate > year_end_date and settled_cy == false and remaining_deduction > currently_paid %}
+
+        {% assign kia_per_inv_cy = currently_paid %}
+         
+          {% if fy_to > fy_from %}
+            {% rollforward nil entry.mia_option %}
+            {% rollforward nil entry.eia_option %}
+            {% rollforward paid_prior_periods entry.paid_prior %}
+            {% rollforward nil entry.paid %}
+            {% rollforward nil entry.inv_amount %}
+            {% rollforward nil entry.mia_category %}
+            {% rollforward true entry.rf_check %}
+            {% assign rows_rollforwarded = rows_rollforwarded+1 %}
+          {% endif %}
+          
+        {% comment %}---situation in which deduction is all depleted---{% endcomment %}
+        {% elsif settled_cy == true or currently_paid+entry.paid_prior >= kia_per_inv %}
+
+        {% assign kia_per_inv_cy = remaining_deduction %}
+
+          {% if fy_to > fy_from %}
+            {% rollforward nil entry.description %}
+            {% rollforward nil entry.inv_date %}
+            {% rollforward nil entry.usedate %}
+            {% rollforward nil entry.kia_option %}
+            {% rollforward nil entry.mia_option %}
+            {% rollforward nil entry.eia_option %}
+            {% rollforward nil entry.retrosp_investment %}
+            {% rollforward nil entry.inv_amount %}
+            {% rollforward nil entry.paid_prior %}
+            {% rollforward nil entry.paid %}
+            {% rollforward nil entry.mia_category %}
+            {% rollforward nil entry.kia_percentage %}
+            {% rollforward nil entry.rf_check %}
+          {% endif %}
+          
+        {% else %}
+        
+          {% assign kia_per_inv_cy = 0 %}
+          
+          {% if fy_to > fy_from %}
+            {% rollforward nil entry.description %}
+            {% rollforward nil entry.inv_date %}
+            {% rollforward nil entry.usedate %}
+            {% rollforward nil entry.kia_option %}
+            {% rollforward nil entry.mia_option %}
+            {% rollforward nil entry.eia_option %}
+            {% rollforward nil entry.retrosp_investment %}
+            {% rollforward nil entry.inv_amount %}
+            {% rollforward nil entry.paid_prior %}
+            {% rollforward nil entry.paid %}
+            {% rollforward nil entry.mia_category %}
+            {% rollforward nil entry.kia_percentage %}
+            {% rollforward nil entry.rf_check %}
+          {% endif %}
+        
+        {% endif %}
+        
+        {% if entry.kia_option == true %}
+          {% if kia_per_inv_cy >= 0 %}{{ kia_per_inv_cy | currency_dc:0 }}{% endif %}
+          {% $2+ kia_per_inv_cy %}{% $10+ kia_per_inv_cy %}
+        {% endif %}
+        
+      {% comment %}-----------when current deduction will be saved for future period-----------{% endcomment %}
+      {% elsif usedate > year_end_date and settled_cy == false and kia_per_inv > currently_paid %}
+      
+        {% assign kia_per_inv_cy = currently_paid %}
+
+        {% if fy_to > fy_from %}
+          {% rollforward nil entry.mia_option %}
+          {% rollforward nil entry.eia_option %}
+          {% rollforward nil entry.paid %}
+          {% rollforward paid_prior_periods entry.paid_prior %}
+          {% rollforward entry.inv_amount entry.retrosp_investment %}
+          {% rollforward nil entry.inv_amount %}
+          {% rollforward nil entry.mia_category %}
+          {% rollforward kia_percentage entry.kia_percentage %}
+          {% rollforward true entry.rf_check %}
+          {% assign rows_rollforwarded = rows_rollforwarded+1 %}
+        {% endif %}
+        
+        {% if entry.kia_option == true %}
+          {% if kia_per_inv_cy >= 0 %}{{ kia_per_inv_cy | currency_dc:0 }}{% endif %}
+          {% $2+ kia_per_inv_cy %}{% $10+ kia_per_inv_cy %}
+        {% endif %}
+        
+      {% comment %}----------when all deduction is used in current period----------{% endcomment %}
+      {% elsif settled_cy == true or currently_paid >= kia_per_inv %}
+      
+        {% assign kia_per_inv_cy = kia_per_inv %}
+        
+        {% if fy_to > fy_from %}
+          {% rollforward nil entry.description %}
+          {% rollforward nil entry.inv_date %}
+          {% rollforward nil entry.usedate %}
+          {% rollforward nil entry.kia_option %}
+          {% rollforward nil entry.mia_option %}
+          {% rollforward nil entry.eia_option %}
+          {% rollforward nil entry.retrosp_investment %}
+          {% rollforward nil entry.inv_amount %}
+          {% rollforward nil entry.paid_prior %}
+          {% rollforward nil entry.paid %}
+          {% rollforward nil entry.mia_category %}
+          {% rollforward nil entry.kia_percentage %}
+          {% rollforward nil entry.rf_check %}
+        {% endif %}
+        
+        {% if entry.kia_option == true %}
+          {% if kia_per_inv_cy >= 0 %}{{ kia_per_inv_cy | currency_dc:0 }}{% endif %}
+          {% $2+ kia_per_inv_cy %}{% $10+ kia_per_inv_cy %}
+        {% endif %}
+        
+      {% comment %}----------remaining scenarios--------------{% endcomment %}
+      {% else %}
+      
+        {% assign kia_per_inv_cy = 0 %}
+        {% $10+ kia_per_inv_cy %}
+        
+        {% if fy_to > fy_from %}
+          {% rollforward nil entry.description %}
+          {% rollforward nil entry.inv_date %}
+          {% rollforward nil entry.usedate %}
+          {% rollforward nil entry.kia_option %}
+          {% rollforward nil entry.mia_option %}
+          {% rollforward nil entry.eia_option %}
+          {% rollforward nil entry.retrosp_investment %}
+          {% rollforward nil entry.inv_amount %}
+          {% rollforward nil entry.paid_prior %}
+          {% rollforward nil entry.paid %}
+          {% rollforward nil entry.mia_category %}
+          {% rollforward nil entry.kia_percentage %}
+          {% rollforward nil entry.rf_check %}
+        {% endif %}
+        
+      {% comment %}closing of outer if statements for line kia amount{% endcomment %}
+      {% endif %}
+    
+    {% comment %}else statement for entry.kia_option == true statement{% endcomment %}
+    {% else %}
+    
+      {% if fy_to > fy_from %}
+        {% rollforward nil entry.description %}
+        {% rollforward nil entry.inv_date %}
+        {% rollforward nil entry.usedate %}
+        {% rollforward nil entry.kia_option %}
+        {% rollforward nil entry.mia_option %}
+        {% rollforward nil entry.eia_option %}
+        {% rollforward nil entry.retrosp_investment %}
+        {% rollforward nil entry.inv_amount %}
+        {% rollforward nil entry.paid_prior %}
+        {% rollforward nil entry.paid %}
+        {% rollforward nil entry.mia_category %}
+        {% rollforward nil entry.kia_percentage %}
+        {% rollforward nil entry.rf_check %}
+      {% endif %}
+    
+    {% comment %}closing of if entry.kia_option != blank statement{% endcomment %}
+    {% endif %}
+    
+    {% include "parts/MIA_EIA" %}
+    | {% if [mia_deduction_entry_key] >= 0 %}
+        {{ [mia_deduction_entry_key] | currency_dc:0 }}
+      {% endif %}
+    | {% if [eia_deduction_entry_key] >= 0 %}
+        {{ [eia_deduction_entry_key] | currency_dc:0 }}
+      {% endif %}
+    
+    {% comment %}total deduction{% endcomment %}
+    | {% if entry.mia_option or entry.kia_option or entry.eia_option %}
+        {% assign total_deduction_for_row = $10+[mia_deduction_entry_key]+[eia_deduction_entry_key] %}
+        {{ total_deduction_for_row | currency_dc:0 }}
+      {% endif %}
+  
+    {% comment %}effective percentage logic{% endcomment %}
+    |  {% if entry.retrosp_investment > 0 and entry.inv_date < year_start_date and entry.kia_option == true %}
+            
+          {% if entry.kia_percentage != blank and entry.rf_check == true %}
+            
+            {% comment %}percentage from previous rollforward{% endcomment %}
+            {{ entry.kia_percentage | percentage }}
+          
+          {% comment %}manual entry situation, when it is filled{% endcomment %}
+          {% elsif entry.kia_percentage != blank %}
+            {% input entry.kia_percentage as:percentage placeholder:"0.00%" %}
+            {% if entry.kia_percentage < 0 or entry.kia_percentage > 100 %}{% ic %}{::warningtext as="hover"}{% t "Vul een geldig percentage in" %}{:/warningtext}{% endic %}{% endif %}
+          
+          {% comment %}manual entry situation, when it is empty{% endcomment %}
+          {% else %}
+            {% input entry.kia_percentage as:percentage placeholder:"0.00%" default:default_percentage required:true %}
+          {% endif %}
+        
+        {% comment %}regular way of obtaining percentage, via calculation{% endcomment %}
+        {% elsif entry.kia_option == true %}
+          {{ [effective_perc] | percentage }}
+        {% endif %}
+
+  {% comment %}closing of unless statement for selecting neither kia, mia or eia {% endcomment %}     
+  {% endunless %}
+
+{% comment %}closing of if statement for ineligible date{% endcomment %}    
+{% endif %}
+
+{% assign $10 = 0 %}
+
+{% newline %}
+
+
+{% endfori %}
+||||||
+{% ic %}|__^**{{ $20 | currency_dc:0 }}**^__{% endic %}
+|__^**{{ $1 | currency_dc:0 }}**^__
+{% ic %}|__^**{{ $21 | currency_dc:0 }}**^__
+|__^**{{ $22 | currency_dc:0 }}**^__{% endic %}{% assign grand_total = $2+$3+$4 %}
+{% if mia_check == true %}|{% else %}{% ic %}|{% endic %}{% endif %}
+|__^{% if $2 > 0 %}**{{ $2 | currency_dc:0 }}**{% endif %}^__
+|__^{% if $3 > 0 %}**{{ $3 | currency_dc:0 }}**{% endif %}^__
+|__^{% if $4 > 0 %}**{{ $4 | currency_dc:0 }}**{% endif %}^__
+|__^{% if grand_total > 0 %}**{{ grand_total | currency_dc:0 }}**{% endif %}^__
+|
+{% nic %}|{% endnic %}
+{% newline %}
+{% endstripnewlines %}
+
+{% comment %}send total results{% endcomment %}
+{% result 'deduction_kia' $2 %}
+{% result 'deduction_mia' $3 %}
+{% result 'deduction_eia' $4 %}
+{% result 'total_deduction' grand_total %}
+
+{% unless custom.kia_entries.size == 0 and INT(grand_total) == 0  %}
+  {% result 'data_present' true %}
+{% endunless %}
+
+{% if kia_data_included  %}
+  {% result 'data_included_kia' true %}
+{% endif %}
+{% if mia_data_included %}
+  {% result 'data_included_mia' true %}
+{% endif %}
+{% if eia_data_included %}
+  {% result 'data_included_eia' true %}
+{% endif %}
+
+<br>
+
+{% comment %}rollforward of automated entries{% endcomment %}
+{% for account in accounts %}
+  {% capture kia_account_no %}kia_{{ account.id }}{% endcapture %}
+  {% assign account_details = account.details | sort:'date' %}
+  {% for detail in account_details %}
+  
+    {% capture detailkey %}{{ detail.key }}{% endcapture %}
+    {% capture rf_auto_entry %}rf_auto_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture rf_item_key %}kia_rf_entry_{{ INT(rows_rollforwarded) }}{% endcapture %}
+    {% capture entry_usedate %}usedate_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_kia_option %}kia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_kia_option_local %}kia_{{ kia_account_no }}_{{ detailkey }}_local{% endcapture %}
+    {% capture entry_mia_option %}mia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_eia_option %}eia_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_retrosp_investment %}retro_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_paid_prior %}prior_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_paid %}paid_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_mia_category %}miacat_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    {% capture entry_kia_percentage %}perc_{{ kia_account_no }}_{{ detailkey }}{% endcapture %}
+    
+    {% comment %}rollforward each ticked item from depreciation table {% endcomment %}
+    {% if [rf_auto_entry] and fy_to > fy_from %}
+    
+      {% rollforward detail.custom.title custom.kia_entries.[rf_item_key].description %}
+      {% assign rf_auto_inv_date = detail.date as:date %}
+      {% rollforward rf_auto_inv_date custom.kia_entries.[rf_item_key].inv_date %}
+      {% rollforward custom.auto_kia_entries.[entry_usedate] custom.kia_entries.[rf_item_key].usedate %}
+      {% rollforward [entry_kia_option_local] custom.kia_entries.[rf_item_key].kia_option %}
+      {% rollforward nil custom.kia_entries.[rf_item_key].mia_option %}
+      {% rollforward nil custom.kia_entries.[rf_item_key].eia_option %}
+      {% assign auto_paid_prior = custom.auto_kia_entries.[entry_paid_prior]+custom.auto_kia_entries.[entry_paid] %}
+      {% rollforward auto_paid_prior custom.kia_entries.[rf_item_key].paid_prior %}
+      {% rollforward nil custom.kia_entries.[rf_item_key].paid %}
+      {% rollforward detail.value custom.kia_entries.[rf_item_key].retrosp_investment %}
+      {% rollforward nil custom.kia_entries.[rf_item_key].inv_amount %}
+      {% rollforward nil custom.kia_entries.[rf_item_key].mia_category %}
+      {% rollforward true custom.kia_entries.[rf_item_key].rf_check %}
+      {% rollforward [entry_kia_percentage] custom.kia_entries.[rf_item_key].kia_percentage %}
+      
+      {% assign rows_rollforwarded = rows_rollforwarded+1 %}
+      
+    {% elsif fy_to > fy_from %}
+    
+      {% rollforward nil custom.auto_kia_entries.[entry_usedate] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_kia_option] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_mia_option] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_eia_option] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_paid_prior] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_paid] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_retrosp_investment] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_mia_category] %}
+      {% rollforward nil custom.auto_kia_entries.[entry_kia_percentage] %}
+      
+    {% endif %}
+    
+  {% endfor %}
+{% endfor %}
+
+
+

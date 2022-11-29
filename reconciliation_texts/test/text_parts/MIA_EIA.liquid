@@ -1,0 +1,47 @@
+{% comment %}please use this part to include new tariffs for MIA and EIA when released{% endcomment %}
+
+{% capture mia_deduction_entry_key %}mia_deduction_{{ entry.key }}{% endcapture %}
+
+{% if entry.mia_option == true %}
+  {% assign [mia_deduction_entry_key] = 0 %}
+  {% if [mia_amt_entry_key] >= mia_min %}
+    
+    {% unless entry.inv_date < period.year_start_date %}
+      {% if entry.mia_category == "A" %}
+        {% assign [mia_deduction_entry_key] = cat_A*[mia_amt_entry_key] %}
+      {% elsif entry.mia_category == "B" %}
+        {% assign [mia_deduction_entry_key] = cat_B*[mia_amt_entry_key] %}
+      {% elsif entry.mia_category == "C" %}
+        {% assign [mia_deduction_entry_key] = cat_C*[mia_amt_entry_key] %}
+      {% elsif entry.mia_category == "D" %}
+        {% assign [mia_deduction_entry_key] = cat_D*[mia_amt_entry_key] %}
+      {% elsif entry.mia_category == "E" %}
+        {% assign [mia_deduction_entry_key] = cat_E*[mia_amt_entry_key] %}
+      {% elsif entry.mia_category == "F" %}
+        {% assign [mia_deduction_entry_key] = cat_F*[mia_amt_entry_key] %}
+      {% elsif entry.mia_category == "G" %}
+       {% assign [mia_deduction_entry_key] = cat_G*[mia_amt_entry_key] %}
+      {% endif %}
+    {% endunless %}
+    {% $3+ [mia_deduction_entry_key] %}
+
+  {% endif %} 
+{% endif %}
+
+{% comment %}EIA logic{% endcomment %}
+
+{% capture eia_deduction_entry_key %}eia_deduction_{{ entry.key }}{% endcapture %}
+
+{% if entry.eia_option == true  %}
+  {% assign [eia_deduction_entry_key] = 0 %}
+  {% if [eia_amt_entry_key] >= eia_min %}
+    {% unless entry.inv_date < period.year_start_date %}
+      {% assign [eia_deduction_entry_key] = [eia_amt_entry_key]*eia_deduct %}
+    {% endunless %}
+    {% $4+ [eia_deduction_entry_key] %}
+  {% endif %}
+{% endif %}
+
+
+
+

@@ -1,0 +1,18 @@
+{
+  "id": 55201521,
+  "handle": "testest",
+  "name_en": "test r",
+  "name_fr": "test r",
+  "name_nl": "test r",
+  "auto_hide_formula": "",
+  "text_configuration": null,
+  "virtual_account_number": "",
+  "reconciliation_type": "only_reconciled_with_data",
+  "public": false,
+  "allow_duplicate_reconciliations": false,
+  "is_active": true,
+  "externally_managed": false,
+  "text": "main.liquid",
+  "text_parts": {},
+  "test": "tests/testest_liquid_test.yml"
+}

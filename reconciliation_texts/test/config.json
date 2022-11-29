@@ -1,0 +1,24 @@
+{
+  "id": 19548014,
+  "handle": "test",
+  "name_en": "Nieuwe reconciliatie template",
+  "name_fr": "Nieuwe reconciliatie template",
+  "name_nl": "Afschrijvingsstaat test",
+  "auto_hide_formula": "",
+  "text_configuration": null,
+  "virtual_account_number": "",
+  "reconciliation_type": "only_reconciled_with_data",
+  "public": false,
+  "allow_duplicate_reconciliations": false,
+  "is_active": true,
+  "externally_managed": false,
+  "text": "main.liquid",
+  "text_parts": {
+    "translations": "text_parts/translations.liquid",
+    "MIA_EIA": "text_parts/MIA_EIA.liquid",
+    "KIA tariffs": "text_parts/KIA tariffs.liquid",
+    "EIA MIA tables": "text_parts/EIA MIA tables.liquid",
+    "MIA_EIA_auto": "text_parts/MIA_EIA_auto.liquid"
+  },
+  "test": "tests/test_liquid_test.yml"
+}
